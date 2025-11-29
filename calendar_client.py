@@ -1,5 +1,5 @@
 import datetime as dt
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from typing import Any, Dict, List, Optional
 
@@ -8,7 +8,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
 CREDENTIALS_PATH = os.getenv("GOOGLE_CLIENT_SECRETS", os.path.join("secrets", "credentials.json"))
 TOKEN_PATH = os.getenv("GOOGLE_TOKEN_PATH", "token.json")
 DEFAULT_CALENDAR_ID = os.getenv("MANAGED_CALENDAR_ID")
@@ -81,3 +81,35 @@ def create_event(
         .execute()
     )
     return created
+
+def update_event(service, calendar_id: str, event_id: str, patch: dict):
+    """
+    Patch an existing event with the given fields.
+    Only fields present in `patch` will be updated.
+    """
+    updated = (
+        service.events()
+        .patch(calendarId=calendar_id, eventId=event_id, body=patch)
+        .execute()
+    )
+    return updated
+
+def delete_event(service, calendar_id: str, event_id: str) -> bool:
+    """
+    Delete an event. Returns True if no error was raised.
+    """
+    service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+    return True
+
+def freebusy_query(service, time_min_iso: str, time_max_iso: str, calendar_ids: list[str]):
+    """
+    Call the Freebusy API for the given calendars between time_min and time_max.
+    time_min_iso / time_max_iso must be ISO strings in UTC or with offset.
+    """
+    body = {
+        "timeMin": time_min_iso,
+        "timeMax": time_max_iso,
+        "items": [{"id": cid} for cid in calendar_ids],
+    }
+    resp = service.freebusy().query(body=body).execute()
+    return resp.get("calendars", {})

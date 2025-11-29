@@ -1,17 +1,12 @@
 # ai_client.py
-import os
 from openai import OpenAI
+import os
 
 def get_azure_openai_client() -> OpenAI:
-    """
-    Returns an OpenAI client configured to talk to Azure OpenAI.
-    """
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
     api_version = os.getenv("AZURE_OPENAI_API_VERSION")
 
-    # base_url for Azure: endpoint + '/openai'
-    # Some setups use '/openai' or '/openai/v1'; follow your resource docs.
     base_url = endpoint.rstrip("/") + "/openai"
 
     return OpenAI(

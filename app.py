@@ -1,12 +1,14 @@
-from calendar_client import get_calendar_service, list_upcoming_events, create_event
-from datetime import datetime, time, timedelta
 import os
+from datetime import datetime, time, timedelta
+
 import streamlit as st
 from dotenv import load_dotenv
 
-from calendar_client import get_calendar_service, list_upcoming_events
-
+# Load environment variables before importing modules that read env at import time
 load_dotenv()
+
+from calendar_client import get_calendar_service, list_upcoming_events, create_event
+from app_agents.calendar_agent import run_calendar_agent
 
 st.title("Managed Calendar")
 
@@ -63,9 +65,7 @@ if st.button("Create test event in managed calendar"):
     except Exception as ex:
         st.exception(ex)
 
-#Connect agent to UI
-from agents.calendar_agent import run_calendar_agent
-import streamlit as st
+
 
 st.header("Azure Calendar Agent (Agents SDK)")
 
@@ -78,6 +78,4 @@ if st.button("Ask Azure-based agent"):
     with st.spinner("Thinking with Azure OpenAI + tools..."):
         reply = run_calendar_agent(user_query)
     st.write(reply)
-
-
 
