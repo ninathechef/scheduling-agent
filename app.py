@@ -63,4 +63,21 @@ if st.button("Create test event in managed calendar"):
     except Exception as ex:
         st.exception(ex)
 
+#Connect agent to UI
+from agents.calendar_agent import run_calendar_agent
+import streamlit as st
+
+st.header("Azure Calendar Agent (Agents SDK)")
+
+user_query = st.text_input(
+    "Ask the calendar agent something:",
+    value="What are my next 5 events?",
+)
+
+if st.button("Ask Azure-based agent"):
+    with st.spinner("Thinking with Azure OpenAI + tools..."):
+        reply = run_calendar_agent(user_query)
+    st.write(reply)
+
+
 
