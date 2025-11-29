@@ -1,3 +1,5 @@
+from calendar_client import get_calendar_service, list_upcoming_events, create_event
+from datetime import datetime, time, timedelta
 import os
 import streamlit as st
 from dotenv import load_dotenv
@@ -30,6 +32,35 @@ else:
             if event.get("htmlLink"):
                 st.write(f"[Open in Google Calendar]({event['htmlLink']})")
             st.markdown("---")
+
     else:
         st.info("No upcoming events found.")
+
+st.subheader("Create a test event")
+
+default_title = "Test class"
+title = st.text_input("Event title", value=default_title)
+
+col1, col2 = st.columns(2)
+with col1:
+    event_date = st.date_input("Date")
+with col2:
+    event_time = st.time_input("Start time", value=time(9, 0))
+
+duration_minutes = st.number_input("Duration (minutes)", min_value=15, max_value=240, value=60, step=15)
+
+if st.button("Create test event in managed calendar"):
+    try:
+        service = get_calendar_service()
+
+        start_dt = datetime.combine(event_date, event_time)
+        end_dt = start_dt + timedelta(minutes=int(duration_minutes))
+
+        created = create_event(service, calendar_id, title, start_dt, end_dt)
+
+        st.success(f"Created event: {created.get('summary')} at {created['start'].get('dateTime')}")
+        st.json(created)  # optional: show the full event object
+    except Exception as ex:
+        st.exception(ex)
+
 

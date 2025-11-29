@@ -1,4 +1,5 @@
 import datetime as dt
+from datetime import datetime
 import os
 from typing import Any, Dict, List, Optional
 
@@ -7,7 +8,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 CREDENTIALS_PATH = os.getenv("GOOGLE_CLIENT_SECRETS", os.path.join("secrets", "credentials.json"))
 TOKEN_PATH = os.getenv("GOOGLE_TOKEN_PATH", "token.json")
 DEFAULT_CALENDAR_ID = os.getenv("MANAGED_CALENDAR_ID")
@@ -49,3 +50,34 @@ def list_upcoming_events(service: Any, calendar_id: Optional[str] = None, max_re
             "htmlLink": event.get("htmlLink"),
         })
     return events
+
+def create_event(
+    service,
+    calendar_id: str,
+    summary: str,
+    start_dt: datetime,
+    end_dt: datetime,
+    timezone: str = None,
+):
+    """Create a single event in the given calendar and return the created event."""
+    if timezone is None:
+        timezone = os.getenv("TIMEZONE", "Europe/Brussels")
+
+    event_body = {
+        "summary": summary,
+        "start": {
+            "dateTime": start_dt.isoformat(),
+            "timeZone": timezone,
+        },
+        "end": {
+            "dateTime": end_dt.isoformat(),
+            "timeZone": timezone,
+        },
+    }
+
+    created = (
+        service.events()
+        .insert(calendarId=calendar_id, body=event_body)
+        .execute()
+    )
+    return created
