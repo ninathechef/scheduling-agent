@@ -6,8 +6,11 @@ from dotenv import load_dotenv
 # Load environment variables before importing modules that read env at import time
 load_dotenv()
 
+from typing import List
+
 from calendar_client import get_calendar_service, list_upcoming_events
 from app_agents.calendar_agent import run_calendar_agent
+from app_agents.document_agent import run_document_agent
 
 
 st.set_page_config(page_title="Managed Calendar", layout="wide")
@@ -18,7 +21,7 @@ calendar_id = os.getenv("MANAGED_CALENDAR_ID")
 if not calendar_id:
     st.error("Missing MANAGED_CALENDAR_ID in .env")
 else:
-    tab_events, tab_chat = st.tabs(["Upcoming events", "Chat"])
+    tab_events, tab_chat, tab_upload = st.tabs(["Upcoming events", "Chat", "Upload schedule"])
 
     with tab_events:
         st.subheader("Upcoming events")
@@ -70,3 +73,43 @@ else:
                         st.write(reply)
             st.session_state.chat_messages.append({"role": "assistant", "content": reply})
             st.rerun()
+
+    with tab_upload:
+        st.markdown("---")
+        st.header("Phase 4 — Upload your class schedule")
+
+        uploaded_file = st.file_uploader(
+            "Upload a PDF or image (screenshot) of your class schedule",
+            type=["pdf", "png", "jpg", "jpeg"],
+        )
+
+        extracted_events: List[dict] = []
+
+        if uploaded_file is not None:
+            st.write(f"File uploaded: **{uploaded_file.name}**")
+
+            if st.button("Extract schedule from file"):
+                file_bytes = uploaded_file.read()
+                mime_type = uploaded_file.type  # e.g. 'application/pdf' or 'image/png'
+
+                with st.spinner("Asking the document agent to extract your schedule..."):
+                    events = run_document_agent(file_bytes, mime_type)
+                    extracted_events = events
+
+                if not events:
+                    st.warning("No events were extracted. You might need a clearer screenshot or PDF.")
+                else:
+                    st.success(f"Extracted {len(events)} schedule entries.")
+
+                    data = [
+                        {
+                            "title": getattr(e, "title", None),
+                            "day_of_week": getattr(e, "day_of_week", None),
+                            "start_time": getattr(e, "start_time", None),
+                            "end_time": getattr(e, "end_time", None),
+                            "location": getattr(e, "location", None),
+                            "recurrence": getattr(e, "recurrence", None),
+                        }
+                        for e in events
+                    ]
+                    st.table(data)
