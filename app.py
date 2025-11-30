@@ -1,5 +1,4 @@
 import os
-from datetime import datetime, time, timedelta
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -7,9 +6,11 @@ from dotenv import load_dotenv
 # Load environment variables before importing modules that read env at import time
 load_dotenv()
 
-from calendar_client import get_calendar_service, list_upcoming_events, create_event
+from calendar_client import get_calendar_service, list_upcoming_events
 from app_agents.calendar_agent import run_calendar_agent
 
+
+st.set_page_config(page_title="Managed Calendar", layout="wide")
 st.title("Managed Calendar")
 
 calendar_id = os.getenv("MANAGED_CALENDAR_ID")
@@ -17,65 +18,55 @@ calendar_id = os.getenv("MANAGED_CALENDAR_ID")
 if not calendar_id:
     st.error("Missing MANAGED_CALENDAR_ID in .env")
 else:
-    try:
-        service = get_calendar_service()
-        events = list_upcoming_events(service, calendar_id=calendar_id, max_results=10)
-    except Exception as exc:  # pragma: no cover - UI side effect
-        st.exception(exc)
-        events = []
+    tab_events, tab_chat = st.tabs(["Upcoming events", "Chat"])
 
-    if events:
-        for event in events:
-            st.subheader(event.get("summary", "(no title)"))
-            st.write(f"Start: {event.get('start')}")
-            st.write(f"End: {event.get('end')}")
-            if event.get("location"):
-                st.write(f"Location: {event['location']}")
-            if event.get("htmlLink"):
-                st.write(f"[Open in Google Calendar]({event['htmlLink']})")
-            st.markdown("---")
+    with tab_events:
+        st.subheader("Upcoming events")
+        try:
+            service = get_calendar_service()
+            events = list_upcoming_events(service, calendar_id=calendar_id, max_results=10)
+        except Exception as exc:  # pragma: no cover - UI side effect
+            st.exception(exc)
+            events = []
 
-    else:
-        st.info("No upcoming events found.")
+        if events:
+            for event in events:
+                st.markdown(f"**{event.get('summary', '(no title)')}**")
+                st.write(f"Start: {event.get('start')}")
+                st.write(f"End: {event.get('end')}")
+                if event.get("location"):
+                    st.write(f"Location: {event['location']}")
+                if event.get("htmlLink"):
+                    st.write(f"[Open in Google Calendar]({event['htmlLink']})")
+                st.markdown("---")
+        else:
+            st.info("No upcoming events found.")
 
-st.subheader("Create a test event")
+    with tab_chat:
+        st.subheader("Chat with your calendar agent")
 
-default_title = "Test class"
-title = st.text_input("Event title", value=default_title)
+        if "chat_messages" not in st.session_state:
+            st.session_state.chat_messages = [
+                {"role": "assistant", "content": "Hi! Ask me about your calendar and I'll use tools to help."}
+            ]
 
-col1, col2 = st.columns(2)
-with col1:
-    event_date = st.date_input("Date")
-with col2:
-    event_time = st.time_input("Start time", value=time(9, 0))
+        history_box = st.container(height=420, border=True)
+        with history_box:
+            for msg in st.session_state.chat_messages:
+                st.chat_message(msg["role"]).write(msg["content"])
 
-duration_minutes = st.number_input("Duration (minutes)", min_value=15, max_value=240, value=60, step=15)
+        user_input = st.chat_input("Ask something about your calendar...")
 
-if st.button("Create test event in managed calendar"):
-    try:
-        service = get_calendar_service()
+        if user_input:
+            history = st.session_state.chat_messages.copy()
+            st.session_state.chat_messages.append({"role": "user", "content": user_input})
 
-        start_dt = datetime.combine(event_date, event_time)
-        end_dt = start_dt + timedelta(minutes=int(duration_minutes))
-
-        created = create_event(service, calendar_id, title, start_dt, end_dt)
-
-        st.success(f"Created event: {created.get('summary')} at {created['start'].get('dateTime')}")
-        st.json(created)  # optional: show the full event object
-    except Exception as ex:
-        st.exception(ex)
-
-
-
-st.header("Azure Calendar Agent (Agents SDK)")
-
-user_query = st.text_input(
-    "Ask the calendar agent something:",
-    value="What are my next 5 events?",
-)
-
-if st.button("Ask Azure-based agent"):
-    with st.spinner("Thinking with Azure OpenAI + tools..."):
-        reply = run_calendar_agent(user_query)
-    st.write(reply)
-
+            with history_box:
+                for msg in st.session_state.chat_messages:
+                    st.chat_message(msg["role"]).write(msg["content"])
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking with Azure OpenAI + tools..."):
+                        reply = run_calendar_agent(user_input, history=history)
+                        st.write(reply)
+            st.session_state.chat_messages.append({"role": "assistant", "content": reply})
+            st.rerun()

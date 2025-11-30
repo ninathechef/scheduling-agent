@@ -84,20 +84,38 @@ calendar_agent = Agent(
 )
 
 
-async def _ask_calendar_agent(user_message: str) -> str:
+def _format_with_history(history: list[dict[str, str]], user_message: str) -> str:
+    """
+    Combine prior turns with the new user message for lightweight memory.
+    Each history item is expected to have 'role' ('user' or 'assistant') and 'content'.
+    """
+    if not history:
+        return user_message
+    lines = ["Previous conversation:"]
+    for turn in history:
+        role = turn.get("role", "user")
+        content = turn.get("content", "")
+        lines.append(f"{role.capitalize()}: {content}")
+    lines.append(f"User: {user_message}")
+    lines.append("Respond to the latest user request.")
+    return "\n".join(lines)
+
+
+async def _ask_calendar_agent(user_message: str, history: list[dict[str, str]] | None = None) -> str:
     """
     Run the calendar agent asynchronously and return its final response.
     """
+    formatted_input = _format_with_history(history or [], user_message)
     result = await Runner().run(
         starting_agent=calendar_agent,
-        input=user_message,
+        input=formatted_input,
         max_turns=4,
     )
     return result.final_output
 
 
-def run_calendar_agent(user_message: str) -> str:
+def run_calendar_agent(user_message: str, history: list[dict[str, str]] | None = None) -> str:
     """
     Synchronous helper for Streamlit entrypoints.
     """
-    return asyncio.run(_ask_calendar_agent(user_message))
+    return asyncio.run(_ask_calendar_agent(user_message, history))
