@@ -25,10 +25,16 @@ class ScheduleEvent(BaseModel):
     source: Literal["pdf", "image", "manual"] = "manual"
     source_hint: Optional[str] = None
 
+    class Config:
+        extra = "forbid"
+
 class SemesterWindow(BaseModel):
     semester_start: str = Field(..., description="YYYY-MM-DD")
     semester_end: str = Field(..., description="YYYY-MM-DD")
     timezone: str = "Europe/Brussels"
+
+    class Config:
+        extra = "forbid"
 
 # --- Planning / sync ---
 class CreateRecurringOp(BaseModel):
@@ -36,14 +42,23 @@ class CreateRecurringOp(BaseModel):
     event: ScheduleEvent
     rrule: str = Field(..., description="RRULE:FREQ=WEEKLY;UNTIL=...")
 
+    class Config:
+        extra = "forbid"
+
 class UpdateEventOp(BaseModel):
     op: Literal["update"] = "update"
     google_event_id: str
     patch: dict
 
+    class Config:
+        extra = "forbid"
+
 class DeleteEventOp(BaseModel):
     op: Literal["delete"] = "delete"
     google_event_id: str
+
+    class Config:
+        extra = "forbid"
 
 MutationOp = Union[CreateRecurringOp, UpdateEventOp, DeleteEventOp]
 
@@ -52,6 +67,9 @@ class MutationPlan(BaseModel):
     preview: str
     requires_confirmation: bool = True
 
+    class Config:
+        extra = "forbid"
+
 # --- Conflicts ---
 class Conflict(BaseModel):
     type: Literal["overlap", "duplicate", "outside_semester", "ambiguous"]
@@ -59,6 +77,40 @@ class Conflict(BaseModel):
     affected: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
 
+    class Config:
+        extra = "forbid"
+
 class ConflictReport(BaseModel):
     conflicts: List[Conflict]
     blocking: bool = True
+
+    class Config:
+        extra = "forbid"
+
+# --- Negotiation / resolution ---
+class AlternativeSlot(BaseModel):
+    start_iso: str
+    end_iso: str
+    score: float | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class ResolutionOption(BaseModel):
+    operation_index: int
+    suggested_start_iso: str
+    suggested_end_iso: str
+    note: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class NegotiationOutcome(BaseModel):
+    updated_plan: MutationPlan
+    applied_resolutions: List[ResolutionOption] = Field(default_factory=list)
+    unresolved_conflicts: List[str] = Field(default_factory=list)
+
+    class Config:
+        extra = "forbid"

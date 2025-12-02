@@ -1,5 +1,6 @@
 import os
 from datetime import date
+from typing import List
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -7,12 +8,12 @@ from dotenv import load_dotenv
 # Load environment variables before importing modules that read env at import time
 load_dotenv()
 
-from typing import List
-
 from calendar_client import get_calendar_service, list_upcoming_events
 from app_agents.calendar_agent import run_calendar_agent
 from app_agents.document_agent import run_document_agent
 from app_agents.planner_agent import run_planner_agent
+from app_agents.conflict_agent import run_conflict_agent
+from app_agents.negotiation_agent import run_negotiation_agent
 from models import SemesterWindow, ScheduleEvent
 
 
@@ -21,8 +22,21 @@ st.title("Managed Calendar")
 
 calendar_id = os.getenv("MANAGED_CALENDAR_ID")
 
+# Session state
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = [
+        {"role": "assistant", "content": "Hi! Ask me about your calendar and I'll use tools to help."}
+    ]
 if "extracted_events" not in st.session_state:
     st.session_state.extracted_events: List[ScheduleEvent] = []
+if "generated_plan" not in st.session_state:
+    st.session_state.generated_plan = None
+if "semester_window" not in st.session_state:
+    st.session_state.semester_window = None
+if "conflict_report" not in st.session_state:
+    st.session_state.conflict_report = None
+if "negotiation_outcome" not in st.session_state:
+    st.session_state.negotiation_outcome = None
 
 if not calendar_id:
     st.error("Missing MANAGED_CALENDAR_ID in .env")
@@ -54,11 +68,6 @@ else:
     with tab_chat:
         st.subheader("Chat with your calendar agent")
 
-        if "chat_messages" not in st.session_state:
-            st.session_state.chat_messages = [
-                {"role": "assistant", "content": "Hi! Ask me about your calendar and I'll use tools to help."}
-            ]
-
         history_box = st.container(height=420, border=True)
         with history_box:
             for msg in st.session_state.chat_messages:
@@ -89,8 +98,6 @@ else:
             type=["pdf", "png", "jpg", "jpeg"],
         )
 
-        extracted_events: List[dict] = []
-
         if uploaded_file is not None:
             st.write(f"File uploaded: **{uploaded_file.name}**")
 
@@ -100,7 +107,6 @@ else:
 
                 with st.spinner("Asking the document agent to extract your schedule..."):
                     events = run_document_agent(file_bytes, mime_type)
-                    extracted_events = events
                     st.session_state.extracted_events = events
 
                 if not events:
@@ -108,39 +114,112 @@ else:
                 else:
                     st.success(f"Extracted {len(events)} schedule entries.")
 
-                    data = [
-                        {
-                            "title": getattr(e, "title", None),
-                            "day_of_week": getattr(e, "day_of_week", None),
-                            "start_time": getattr(e, "start_time", None),
-                            "end_time": getattr(e, "end_time", None),
-                            "location": getattr(e, "location", None),
-                            "recurrence": getattr(e, "recurrence", None),
-                        }
-                        for e in events
-                    ]
-                    st.table(data)
+        if st.session_state.extracted_events:
+            data = [
+                {
+                    "title": getattr(e, "title", None),
+                    "day_of_week": getattr(e, "day_of_week", None),
+                    "start_time": getattr(e, "start_time", None),
+                    "end_time": getattr(e, "end_time", None),
+                    "location": getattr(e, "location", None),
+                    "recurrence": getattr(e, "recurrence", None),
+                }
+                for e in st.session_state.extracted_events
+            ]
+            st.table(data)
 
-            if st.session_state.extracted_events:
-                st.markdown("---")
-                st.subheader("Plan semester events")
-                semester_start = st.date_input("Semester start date", value=date.today())
-                semester_end = st.date_input("Semester end date", value=date.today())
-                timezone = st.text_input("Timezone (IANA)", value="Europe/Brussels")
+            st.markdown("---")
+            st.subheader("Plan semester events")
+            semester_start = st.date_input("Semester start date", value=date.today())
+            semester_end = st.date_input("Semester end date", value=date.today())
+            timezone = st.text_input("Timezone (IANA)", value="Europe/Brussels")
 
-                if st.button("Generate plan"):
-                    if semester_end < semester_start:
-                        st.error("Semester end must be after start.")
-                    else:
-                        sem = SemesterWindow(
-                            semester_start=semester_start.isoformat(),
-                            semester_end=semester_end.isoformat(),
-                            timezone=timezone,
+            if st.button("Generate plan"):
+                if semester_end < semester_start:
+                    st.error("Semester end must be after start.")
+                else:
+                    sem = SemesterWindow(
+                        semester_start=semester_start.isoformat(),
+                        semester_end=semester_end.isoformat(),
+                        timezone=timezone,
+                    )
+                    st.session_state.semester_window = sem
+                    with st.spinner("Planning recurring events..."):
+                        plan = run_planner_agent(st.session_state.extracted_events, sem)
+                    st.success("Plan generated.")
+                    st.session_state.generated_plan = plan
+                    st.session_state.conflict_report = None
+                    st.subheader("Preview")
+                    st.write(plan.preview)
+                    st.subheader("Raw plan")
+                    st.json(plan.model_dump())
+
+        if st.session_state.generated_plan:
+            st.markdown("---")
+            st.subheader("Conflict detection")
+            if st.button("Detect conflicts"):
+                if not st.session_state.semester_window:
+                    st.error("Missing semester window; generate the plan first.")
+                elif not calendar_id:
+                    st.error("Missing MANAGED_CALENDAR_ID in environment.")
+                else:
+                    with st.spinner("Checking for conflicts..."):
+                        report = run_conflict_agent(
+                            st.session_state.generated_plan,
+                            st.session_state.semester_window,
+                            calendar_id,
                         )
-                        with st.spinner("Planning recurring events..."):
-                            plan = run_planner_agent(st.session_state.extracted_events, sem)
-                        st.success("Plan generated.")
-                        st.subheader("Preview")
-                        st.write(plan.preview)
-                        st.subheader("Raw plan")
-                        st.json(plan.model_dump())
+                    st.session_state.conflict_report = report
+                    st.success("Conflict check completed.")
+
+            if st.session_state.conflict_report:
+                report = st.session_state.conflict_report
+                st.write(f"Blocking: {report.blocking}")
+                if report.conflicts:
+                    for idx, c in enumerate(report.conflicts, start=1):
+                        st.markdown(f"**{idx}. {c.type}** — {c.summary}")
+                        if c.affected:
+                            st.write(f"Affected: {', '.join(c.affected)}")
+                        if c.suggestions:
+                            st.write("Suggestions:")
+                            for s in c.suggestions:
+                                st.write(f"- {s}")
+                        st.markdown("---")
+                else:
+                    st.info("No conflicts detected.")
+                st.subheader("Resolve conflicts")
+                st.text_input("How would you like to resolve these conflicts?", key="conflict_resolution_note")
+
+            st.markdown("---")
+            st.subheader("Negotiation & Revision")
+            if st.button("Auto-resolve conflicts (NegotiationAgent)"):
+                if not st.session_state.generated_plan or not st.session_state.conflict_report:
+                    st.error("Run planner and conflict detection first.")
+                elif not calendar_id:
+                    st.error("Missing MANAGED_CALENDAR_ID in environment.")
+                else:
+                    with st.spinner("Negotiating resolutions..."):
+                        outcome = run_negotiation_agent(
+                            st.session_state.generated_plan,
+                            st.session_state.conflict_report,
+                            calendar_id,
+                        )
+                    st.session_state.negotiation_outcome = outcome
+                    st.session_state.generated_plan = outcome.updated_plan
+                    st.success("Negotiation complete. Plan updated.")
+                    st.rerun()
+
+            if st.session_state.negotiation_outcome:
+                outcome = st.session_state.negotiation_outcome
+                st.success("Negotiation complete. Plan updated.")
+                if outcome.applied_resolutions:
+                    st.write("Applied resolutions:")
+                    for res in outcome.applied_resolutions:
+                        st.markdown(
+                            f"- Operation #{res.operation_index}: "
+                            f"{res.suggested_start_iso} – {res.suggested_end_iso}"
+                        )
+                else:
+                    st.info("No resolutions were applied.")
+                st.write("Revised plan:")
+                st.json(outcome.updated_plan.model_dump(), expanded=False)
