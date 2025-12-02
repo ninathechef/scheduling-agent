@@ -14,6 +14,7 @@ from calendar_tools_agent import (
     freebusy_tool,
     list_upcoming_events_tool,
     update_event_tool,
+    create_recurring_event_tool,
 )
 
 # Ensure .env is loaded before we read env vars
@@ -44,6 +45,7 @@ def _resolve_api_version() -> str:
         return env_version
 
     # Force minimum supported version for the agents library.
+    os.environ["AZURE_OPENAI_API_VERSION"] = REQUIRED_RESPONSES_API_VERSION
     return REQUIRED_RESPONSES_API_VERSION
 
 
@@ -80,6 +82,7 @@ calendar_agent = Agent(
         update_event_tool,
         delete_event_tool,
         freebusy_tool,
+        create_recurring_event_tool,
     ],
 )
 

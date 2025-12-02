@@ -14,7 +14,8 @@ from app_agents.document_agent import run_document_agent
 from app_agents.planner_agent import run_planner_agent
 from app_agents.conflict_agent import run_conflict_agent
 from app_agents.negotiation_agent import run_negotiation_agent
-from models import SemesterWindow, ScheduleEvent
+from app_agents.executor_agent import run_executor_agent
+from models import ExecutionReport, MutationPlan, SemesterWindow, ScheduleEvent
 
 
 st.set_page_config(page_title="Managed Calendar", layout="wide")
@@ -37,6 +38,8 @@ if "conflict_report" not in st.session_state:
     st.session_state.conflict_report = None
 if "negotiation_outcome" not in st.session_state:
     st.session_state.negotiation_outcome = None
+if "execution_report" not in st.session_state:
+    st.session_state.execution_report = None
 
 if not calendar_id:
     st.error("Missing MANAGED_CALENDAR_ID in .env")
@@ -91,7 +94,7 @@ else:
 
     with tab_upload:
         st.markdown("---")
-        st.header("Phase 4 — Upload your class schedule")
+        st.header("Phase 4 - Upload your class schedule")
 
         uploaded_file = st.file_uploader(
             "Upload a PDF or image (screenshot) of your class schedule",
@@ -149,6 +152,7 @@ else:
                     st.success("Plan generated.")
                     st.session_state.generated_plan = plan
                     st.session_state.conflict_report = None
+                    st.session_state.execution_report = None
                     st.subheader("Preview")
                     st.write(plan.preview)
                     st.subheader("Raw plan")
@@ -177,7 +181,7 @@ else:
                 st.write(f"Blocking: {report.blocking}")
                 if report.conflicts:
                     for idx, c in enumerate(report.conflicts, start=1):
-                        st.markdown(f"**{idx}. {c.type}** — {c.summary}")
+                        st.markdown(f"**{idx}. {c.type}** - {c.summary}")
                         if c.affected:
                             st.write(f"Affected: {', '.join(c.affected)}")
                         if c.suggestions:
@@ -206,6 +210,7 @@ else:
                         )
                     st.session_state.negotiation_outcome = outcome
                     st.session_state.generated_plan = outcome.updated_plan
+                    st.session_state.execution_report = None
                     st.success("Negotiation complete. Plan updated.")
                     st.rerun()
 
@@ -217,9 +222,49 @@ else:
                     for res in outcome.applied_resolutions:
                         st.markdown(
                             f"- Operation #{res.operation_index}: "
-                            f"{res.suggested_start_iso} – {res.suggested_end_iso}"
+                            f"{res.suggested_start_iso} - {res.suggested_end_iso}"
                         )
                 else:
                     st.info("No resolutions were applied.")
                 st.write("Revised plan:")
                 st.json(outcome.updated_plan.model_dump(), expanded=False)
+
+            st.markdown("---")
+            st.header("Phase 8 - Apply plan to Google Calendar")
+
+            plan: MutationPlan | None = st.session_state.generated_plan
+
+            if not plan:
+                st.info("No plan in memory yet. Generate a plan first.")
+            else:
+                st.text("Current plan preview:")
+                st.text(plan.preview)
+
+                if st.button("Apply this plan to my managed calendar"):
+                    with st.spinner("ExecutorAgent is applying the plan..."):
+                        report: ExecutionReport = run_executor_agent(plan)
+                    st.session_state.execution_report = report
+                    st.success("Execution finished. See details below.")
+
+            if st.session_state.execution_report:
+                report: ExecutionReport = st.session_state.execution_report
+                st.markdown("### Execution summary")
+                st.write(f"Total ops: {report.total_ops}")
+                st.write(f"Executed: {report.executed_ops}")
+                st.write(f"Failed: {report.failed_ops}")
+
+                rows = []
+                for r in report.results:
+                    rows.append(
+                        {
+                            "index": r.op_index,
+                            "type": r.op_type,
+                            "status": r.status,
+                            "message": r.message,
+                            "google_event_id": r.google_event_id or "",
+                        }
+                    )
+                if rows:
+                    st.table(rows)
+                else:
+                    st.info("No individual results recorded.")

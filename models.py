@@ -40,6 +40,8 @@ class SemesterWindow(BaseModel):
 class CreateRecurringOp(BaseModel):
     op: Literal["create_recurring"] = "create_recurring"
     event: ScheduleEvent
+    first_start_iso: str = Field(..., description="ISO start datetime for the first occurrence")
+    first_end_iso: str = Field(..., description="ISO end datetime for the first occurrence")
     rrule: str = Field(..., description="RRULE:FREQ=WEEKLY;UNTIL=...")
 
     class Config:
@@ -69,6 +71,23 @@ class MutationPlan(BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+# --- Execution ---
+class ExecutionResult(BaseModel):
+    op_index: int
+    op_type: str
+    status: Literal["success", "failed", "skipped"]
+    message: str
+    google_event_id: Optional[str] = None
+
+
+class ExecutionReport(BaseModel):
+    plan_preview: str
+    total_ops: int
+    executed_ops: int
+    failed_ops: int
+    results: List[ExecutionResult]
 
 # --- Conflicts ---
 class Conflict(BaseModel):

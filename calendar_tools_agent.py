@@ -5,6 +5,7 @@ from calendar_client import (
     get_calendar_service,
     list_upcoming_events,
     create_event,
+    create_recurring_event,
     update_event,
     delete_event,
     freebusy_query,
@@ -71,6 +72,54 @@ def create_simple_event_tool(
         "summary": created.get("summary"),
         "start": created.get("start"),
         "end": created.get("end"),
+    }
+
+
+@function_tool
+def create_recurring_event_tool(
+    title: str,
+    first_start_iso: str,
+    first_end_iso: str,
+    rrule: str,
+    location: str | None = None,
+    timezone: str | None = None,
+) -> Dict[str, Any]:
+    """
+    Create a recurring event in the managed calendar.
+
+    Args:
+        title: Event title/summary.
+        first_start_iso: First occurrence start datetime (ISO 8601).
+        first_end_iso: First occurrence end datetime (ISO 8601).
+        rrule: RFC5545 RRULE string (e.g. 'RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=...').
+        location: Optional location.
+        timezone: Optional IANA timezone (defaults from env).
+
+    Returns:
+        Dict with id, summary, start, end, recurrence.
+    """
+    if timezone is None:
+        timezone = TIMEZONE
+
+    service = get_calendar_service()
+
+    created = create_recurring_event(
+        service,
+        MANAGED_CALENDAR_ID,
+        title,
+        first_start_iso,
+        first_end_iso,
+        rrule,
+        location=location,
+        timezone=timezone,
+    )
+
+    return {
+        "id": created.get("id"),
+        "summary": created.get("summary"),
+        "start": created.get("start"),
+        "end": created.get("end"),
+        "recurrence": created.get("recurrence"),
     }
 
 @function_tool

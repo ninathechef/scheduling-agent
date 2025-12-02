@@ -82,6 +82,46 @@ def create_event(
     )
     return created
 
+
+def create_recurring_event(
+    service,
+    calendar_id: str,
+    summary: str,
+    first_start_iso: str,
+    first_end_iso: str,
+    rrule: str,
+    location: str | None = None,
+    timezone: str | None = None,
+):
+    """
+    Create a recurring event starting at first_start_iso / first_end_iso with the given RRULE.
+    """
+    if timezone is None:
+        timezone = os.getenv("TIMEZONE", "Europe/Brussels")
+
+    event_body = {
+        "summary": summary,
+        "start": {
+            "dateTime": first_start_iso,
+            "timeZone": timezone,
+        },
+        "end": {
+            "dateTime": first_end_iso,
+            "timeZone": timezone,
+        },
+        "recurrence": [rrule],
+    }
+
+    if location:
+        event_body["location"] = location
+
+    created = (
+        service.events()
+        .insert(calendarId=calendar_id, body=event_body)
+        .execute()
+    )
+    return created
+
 def update_event(service, calendar_id: str, event_id: str, patch: dict):
     """
     Patch an existing event with the given fields.

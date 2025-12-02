@@ -19,6 +19,7 @@ def _resolve_api_version() -> str:
     env_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("OPENAI_VERSION_NAME")
     if env_version and env_version.startswith("2025"):
         return env_version
+    os.environ["AZURE_OPENAI_API_VERSION"] = REQUIRED_RESPONSES_API_VERSION
     return REQUIRED_RESPONSES_API_VERSION
 
 
